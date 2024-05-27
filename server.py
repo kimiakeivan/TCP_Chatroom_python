@@ -3,48 +3,48 @@ import threading
 import time
 import ast
 
-# 192.168.1.102
-PORT = 1532
-HOST_IP = "127.0.0.1"
-ADDR = (HOST_IP, PORT)
+
+PORT = 15000
+HOST = "127.0.0.1"
+ADDR = (HOST, PORT)
 FORMAT = "utf-8"
 DICT_CLIENT = {}
+
+clients = []
+names = []
+
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(ADDR)
 
 
-clients = []
-names = []
-private_clients = []
-new_list = []
-
-
-# send messages to the all clients that are currently connected to the server
+# sending the message to the all clients that are currently connected to the server
 def broadcast(message):
     for client in clients:
         client.send(message)
     print(message.decode(FORMAT))
 
 
-def private_broadcast(message):
-    global  new_list
-    for client in new_list:
+# sending private message
+def private_broadcast(message, list):
+    for client in list:
         client.send(message)
     print(message.decode(FORMAT))
 
 
+# disconnect the client and removing their name from the list
 def leave(client):
     client.close()
     index = clients.index(client)
     clients.remove(client)
     name = names[index]
-    message = f"{name} left the chat.\n".encode(FORMAT)
-    broadcast(message)
     names.remove(name)
-    members()
+    message = f"{name} left the chat.\n{names}\n".encode(FORMAT)
+    broadcast(message)
 
 
+
+# handling client states
 def handle_client(client):
     connected = True
     while connected:
@@ -53,20 +53,12 @@ def handle_client(client):
 
             message = client.recv(1024)
             msg = message.decode(FORMAT)
-            global private_clients
-            global new_list
 
-            if msg.startswith("['"):
+            if msg.startswith("["):
                 msg = msg.split("\n")
-                print(msg)
-                clientlist = ast.literal_eval(msg[0])
-                print(clientlist)
-                print(DICT_CLIENT.values())
-                new_list = [
-                    key for key, value in DICT_CLIENT.items() if value in clientlist
-                ]
-                print("OK")
-                private_broadcast(f"private message from {msg[1]}".encode(FORMAT))
+                private_list = ast.literal_eval(msg[0])
+                private_list = [key for key, value in DICT_CLIENT.items() if value in private_list]
+                private_broadcast(f"private message from {msg[1]}".encode(FORMAT), private_list)
 
             else:
                 broadcast(message)
@@ -79,13 +71,10 @@ def handle_client(client):
             break
 
 
-def members():
-    members = f"{names}\n".encode(FORMAT)
-    broadcast(members)
 
 
 def start():
-    print(f"[LISTENING] server is listening on {HOST_IP}")
+    print(f"[LISTENING] server is listening on {HOST}")
     server.listen()
 
     while True:
@@ -99,14 +88,12 @@ def start():
         names.append(name)
         DICT_CLIENT[client] = name
 
-        # broadcasting the login notification of a new client
-        message = f"{name} joined the chat room.\n".encode(FORMAT)
-        broadcast(message)
-
         # sending "Hi" to the client
         client.send(f"Hi {name}, welcome to the chat room.\n".encode(FORMAT))
 
-        members()
+        # broadcasting the list of clients & joined message
+        message = f"{name} joined the chat room.\n {names}\n".encode(FORMAT)
+        broadcast(message)
 
         # running a thread for every client
         thread = threading.Thread(target=handle_client, args=(client,))
